@@ -46,7 +46,8 @@ RUN
 Dependencies:  python3 -m pip install pygame numpy
 
 --------------------------------------------------------------------------------
-CONTROLS (in the viewer) - press H in-app for the full, mode-aware list
+CONTROLS - a mode-aware CONTROLS BAR is always shown along the bottom (toggle: /);
+press H for the full overlay. Every input:
 --------------------------------------------------------------------------------
   TAB ................... switch MODEL <-> FLIGHT
   MODEL:  mouse orbit / wheel or +/- zoom (smooth) / R-M drag pan / WASD free-fly +
@@ -3479,6 +3480,7 @@ class App:
         self.show_help = False
         self.show_scope = True
         self.show_field = True            # live plasma-field representation panel
+        self.show_controls = True         # always-on controls legend bar (toggle: /)
         self.pf_particles = []            # flowing medium particles (dynamic flow)
         self.pf_phase = 0.0               # RMF / travelling-wave animation phase
         self.show_mission = False
@@ -3884,6 +3886,10 @@ class App:
             self._flash("Plasma-field view " + ("ON" if self.show_field else "OFF"))
             return True
         if k == pygame.K_u: self.show_panel = not self.show_panel; return True
+        if k in (pygame.K_SLASH, pygame.K_QUESTION):
+            self.show_controls = not self.show_controls
+            self._flash("Controls bar " + ("ON" if self.show_controls else "OFF (/ to show)"))
+            return True
         if k == pygame.K_p: S.paused = not S.paused; return True
         if k == pygame.K_F2: self._screenshot(); return True
         if k == pygame.K_l:
@@ -4076,6 +4082,8 @@ class App:
             self.draw_flight_hud()
 
         self._draw_panel()
+        if self.show_controls:
+            self._draw_controls_bar()
 
         if self.show_help:
             self.draw_help()
@@ -4088,7 +4096,8 @@ class App:
 
         if self.status_t > 0:
             img = self.fmed.render(self.status, True, C_WARN)
-            surf.blit(img, (self.W // 2 - img.get_width() // 2, self.H - 46))
+            sy = self.H - (96 if self.show_controls else 46)   # clear of the controls bar
+            surf.blit(img, (self.W // 2 - img.get_width() // 2, sy))
 
         # present the fixed-design canvas scaled to the actual window (letterbox)
         vx, vy, vw, vh, scale = self._vp
@@ -4169,7 +4178,8 @@ class App:
         eng = (self.preview == "engine")
         title = ("Gman's 117 Snake-Swim ENGINE - component showcase (100% scale)"
                  if eng else "Gman's 117 Snake-Swim Hover Bike")
-        surf.blit(self.fmed.render(title, True, C_TEXT), (20, self.H - 30))
+        if not self.show_controls:                       # else the controls bar owns the bottom
+            surf.blit(self.fmed.render(title, True, C_TEXT), (20, self.H - 30))
         if not self.show_panel:                          # panel replaces these hints
             preview = "ENGINE" if eng else "BIKE"
             mode = f"PREVIEW: {preview}   VIEW: {R.view.upper()}" + \
@@ -4398,6 +4408,28 @@ class App:
             surf.blit(self.fsmall.render("- " + spec, True, C_TEXT), (x + 14, yy))
             yy += 18
 
+    def _draw_controls_bar(self):
+        """Always-visible, mode-aware legend of EVERY control input, along the bottom
+        of the screen (toggle with '/'). So the controls are never a mystery."""
+        surf = self.screen
+        W, H = self.W, self.H
+        bh = 46
+        y = H - bh
+        _panel(surf, 4, y, W - 8, bh - 2, alpha=236)
+        if self.mode == "model":
+            r1 = ("MODEL  mouse:orbit   wheel or +/-:zoom   WASD:free-fly   Q/E:up/down"
+                  "   R/M-drag:pan   R:reset-cam   |   1/2/3:full/exploded/assembly"
+                  "   4 or X:section   5:engine  6:saucer   . ,:isolate   L:labels   UP/DN:disc-rpm")
+        else:
+            r1 = ("FLIGHT  UP/DN:throttle  SPACE:max  C:descend  Z:alt-hold  V:hover"
+                  "   |   W/S/A/D/Q/E:VECTOR the clutch (engines gimbal, body stays LEVEL)"
+                  "   6:fly bike<->saucer   B:level/lean body   X:vector-sweep   G:X-ray   K:adaptive-clutch   R:respawn")
+        r2 = ("ANY   TAB:model<->flight   [ ]:environment (or star, in mission)   "
+              "T:scope   Y:plasma-field   J:mission   I:info   M:math   H:full-help   "
+              "U:panel   O:export-OBJ   F2:shot   / :hide this bar")
+        surf.blit(self.fsmall.render(r1, True, C_ACCENT), (14, y + 6))
+        surf.blit(self.fsmall.render(r2, True, C_DIM), (14, y + 24))
+
     def draw_help(self):
         surf = self.screen
         w, h = 620, 600
@@ -4423,13 +4455,14 @@ class App:
             "SPACE max grip   C descend   Z altitude-hold   V hover-throttle",
             "W/S/A/D/Q/E vector the INTERNAL clutch (engines gimbal, body LEVEL)",
             "6 fly BIKE <-> SAUCER   B level/lean   X sweep   G X-RAY   K adaptive",
-            "[ / ] change environment: Earth/ionosphere/asteroid/space/ISM",
+            "[ / ] environment: Earth/20km/ionosphere/space/ISM/Venus/Titan/",
+            "      Mars/Super-Earth 2g/Heavy 3g/Extreme 5g/Crush 10g",
             "",
             "-- ANY MODE --",
-            "[ / ] cycle plasma medium     T RMF field scope",
+            "[ / ] cycle environment    T RMF field scope    / controls bar",
             "Y ...... live PLASMA-FIELD view (flow, ionise, J x B, thrust)",
             "J interstellar mission ([ / ] change star)   I info   M math",
-            "P pause   O export OBJ (bike + saucer)   F2 screenshot",
+            "P pause   O export OBJ (bike + saucer)   F2 screenshot   U panel",
             "H this help    ESC quit    (UI scales to the window)",
         ]
         yy = y + 46
@@ -4534,7 +4567,8 @@ class App:
         if self.show_field:
             self.draw_plasma_field()
         title = "Gman's 117 RMF plasma-coupling drive - flight test-bed"
-        surf.blit(self.fmed.render(title, True, C_TEXT), (20, self.H - 30))
+        if not self.show_controls:                       # else the controls bar owns the bottom
+            surf.blit(self.fmed.render(title, True, C_TEXT), (20, self.H - 30))
 
     def _env_table(self):
         """Comparison across test environments: thrust vs local weight. When the
