@@ -143,21 +143,52 @@ limit.
 
 ---
 
-## Internal vectoring + the closed saucer + flight realism
+## Internal vectoring — the craft body stays LEVEL
 
-- **Internally gimbaled thrust:** `thrust_dir = R_yaw·R_gimbal·[0,1,0]`, `|thrust_dir|
-  = 1`. The clutch plate pivots (±42°) to aim the thrust while the body stays level.
-  **Verified:** full roll → gimbal 42.0°, body lean only 14.7°. Because nothing
-  external moves and no propellant is carried, the whole drive fits inside a **closed
-  saucer** (`6`) — it looks propellantless but is the same open thruster.
-- **Real service ceiling:** `ρ(h) = ρ₀·exp(−h/8500 m)`; thrust `3619→3037 N` with
+The strongest design requirement: the craft steers by **internal gimbal**, not by
+tilting the airframe.
+
+- `thrust_dir = R_yaw · R_gimbal · [0,1,0]`, `|thrust_dir| = 1`. The plasma-clutch
+  plate / engine pods pivot (±42°) to aim the thrust while the **body stays level and
+  closed**. In the renderer the *engine parts* visibly gimbal while the chassis holds
+  level.
+- **Verified (`--selftest`, default "stationary body" mode):** under full pitch+roll
+  the gimbal swings to 42° while the **body lean is 0.0°**. A `B` toggle enables a mild
+  cosmetic lean (≤ 15 % of gimbal) if you want it.
+- Because nothing external moves and no propellant is carried, the whole drive fits
+  inside a **closed saucer hull** — it looks propellantless but is the same open,
+  air-breathing thruster.
+
+## The craft, the saucer, and the viewer
+
+- **Hover-bike:** four **flat/horizontal** Gman's 117 discs (they face down and throw
+  ionized air *down* for lift — not wheel-like), an **exosuit rider** on the seat, and
+  **landing skids that retract in flight** and deploy on landing.
+- **Saucer (`6`)** — a proper **X-Files-style redesign**: a single **large central
+  Gman's 117 disc** (horizontal) with the gimbaled clutch plate under it, sealed inside
+  a **UFO hull** (wide flat rim, top dome, concave underside) with rim air-intakes and a
+  scout tripod. It is **flyable** — press `6` in flight (or "Fly SAUCER") and it
+  maneuvers by the **internal gimbal only** while the closed hull stays level (verified:
+  it lifts with the hull at 0.0° lean). It also exports as its own OBJ variant.
+- **Engine showcase (`5`)** — a live **"6 CORE DISC FEATURES (6/6 present)"** checklist
+  (sponge lattice, snake-swim ripples, mass offset, transmission spheres, recoilless
+  capsule + vents, RMF coils) that highlights whichever you isolate with `.`/`,`, plus
+  an orientation gizmo and the mechanical operating chain.
+- **Camera:** mouse orbit + **smooth damped zoom** (wheel or `+`/`-`) + pan, plus a
+  **WASD free-fly** (`Q/E` rise/sink) to fly around/into the model.
+
+## Flight realism
+
+- **Real service ceiling:** `ρ(h) = ρ₀·exp(−h/8500 m)`; thrust `3619 → 3037 N` with
   altitude → **T/W = 1 at ~10.7 km** (verified). Ground effect near the pad.
 - **Live views:** **PLASMA-FIELD** (`Y`) shows medium inflow, ionization, J×B and the
-  `THRUST = mdot × dv` reaction arrow; **X-RAY body** (`G`) ghosts the skin so you
-  watch the engine work in flight; the **coupling disc** draws the actual coupling
-  area, resizing per environment.
-- **Relativistic mission:** exact Rindler flip-and-burn — Alpha Centauri 4.367 ly at
-  0.010 g → 20.9 % c, 41.4 yr Earth, 41.1 yr ship.
+  `THRUST = mdot × dv` reaction arrow (dense air = thick flow, vacuum = none);
+  **X-RAY body** (`G`) ghosts the skin so you watch the engine work; the **coupling
+  disc** draws the true coupling area (capped for framing); a widening, animated
+  **thrust plume** tilts with the vectored thrust.
+- **Interstellar mission (`J`):** exact Rindler flip-and-burn; `[` / `]` pick the star
+  (Alpha Centauri 4.367 ly → 20.9 % c, 41.4 yr Earth / 41.1 yr ship; … TRAPPIST-1, the
+  Galactic Centre, …).
 
 ---
 
@@ -175,10 +206,13 @@ python3 Main.py --ultra          # ultra-resolution interactive build (~88k face
 python3 Main.py --export-obj     # regenerate the ×3-detail OBJ/MTL exports
 ```
 
-**Keys.** Any: `TAB` mode · `[` `]` environment · `T` scope · `Y` plasma-field ·
-`I` info · `M` math · `U` panel. Model: `1/2/3` views · `4`/`X` section · `5` engine ·
-`6` saucer · `.` `,` isolate · `O` export. Flight: `UP/DOWN` throttle · `Z` alt-hold ·
-`V` hover · `W/S/A/D/Q/E` vector · `X` sweep · `G` X-ray · `K` adaptive clutch.
+**Keys.** Any: `TAB` mode · `[` `]` environment (or star, in the mission chart) ·
+`T` scope · `Y` plasma-field · `J` mission · `I` info · `M` math · `U` panel.
+Model: mouse orbit / `+`-`-` smooth zoom / **`WASD` free-fly** + `Q/E` rise-sink ·
+`1/2/3` views · `4`/`X` section · `5` engine showcase · `6` saucer · `.` `,` isolate ·
+`R` reset cam · `O` export. Flight: `UP/DOWN` throttle · `Z` alt-hold · `V` hover ·
+`W/S/A/D/Q/E` vector (**body stays level, engines gimbal**) · `6` fly bike↔saucer ·
+`B` level/lean body · `X` sweep · `G` X-ray · `K` adaptive clutch.
 
 ---
 
@@ -195,8 +229,10 @@ python3 Main.py --export-obj     # regenerate the ×3-detail OBJ/MTL exports
 
 ## Deliverables
 
-- `gmans117_hoverbike_assembled.obj` / `.mtl` — ×3 detail, ~140 k vertices.
+- `gmans117_hoverbike_assembled.obj` / `.mtl` — ×3 detail, ~141 k vertices.
 - `gmans117_hoverbike_exploded.obj` / `.mtl` — exploded view, ×3 detail.
+- `gmans117_saucer_assembled.obj` / `.mtl` — the redesigned single-large-disc saucer.
+- `gmans117_saucer_exploded.obj` / `.mtl` — saucer exploded view.
 
 See **`overview.md`** for the full technical reference: every equation, every verified
 number, the complete conservation and scaling proofs, the subsystem-by-subsystem

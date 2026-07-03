@@ -49,16 +49,15 @@ Dependencies:  python3 -m pip install pygame numpy
 CONTROLS (in the viewer) - press H in-app for the full, mode-aware list
 --------------------------------------------------------------------------------
   TAB ................... switch MODEL <-> FLIGHT
-  MODEL:  mouse orbit / wheel zoom / R-M drag pan ; 1/2/3 views ; 4 or X section
-          5 engine component showcase ; . , isolate a component ; L labels
-          UP/DOWN disc RPM ; N/B/F assembly ; hover/click a part for specs
-          6 SAUCER view (engine sealed inside a closed hull - looks propellantless)
+  MODEL:  mouse orbit / wheel or +/- zoom (smooth) / R-M drag pan / WASD free-fly +
+          Q/E rise-sink ; 1/2/3 views ; 4 or X section ; 5 engine showcase ;
+          6 SAUCER (single large disc + UFO hull) ; . , isolate ; L labels ; UP/DN RPM
   FLIGHT (plasma-driven): flight is decided by plasma density vs local gravity -
           it LIFTS only where thrust > local weight (see the on-screen environment
           table). UP/DOWN throttle-grip (ascend/descend) ; SPACE max ; C descend ;
           Z altitude-hold ; V hover ; W/S/A/D/Q/E vector the INTERNAL clutch plate
-          (the thrust vector pivots; the body stays level) ; X vector-sweep ;
-          G X-RAY body (ghost the skin, watch the engine work) ; K adaptive clutch ;
+          (engines gimbal, the body stays LEVEL) ; 6 fly BIKE<->SAUCER ;
+          B toggle level/lean body ; X vector-sweep ; G X-RAY body ; K adaptive ;
           R respawn ; [ / ] change environment (Earth/Venus/Titan/Mars/space...).
   ANY:    [ / ] cycle plasma medium ; T RMF scope ; Y live PLASMA-FIELD view
           J interstellar mission ; I info/101 ; M math ; P pause ; O export OBJ
@@ -735,10 +734,12 @@ def _lattice_meshes(r_out, r_in, th, pivot, tilt):
                  pivot=pivot, tilt=tilt)]
 
 
-def build_engine_unit(tag, cx, cy, cz, is_rear, label, order0):
-    """Build one Snake-Swim propulsion pod. Returns (parts, meta)."""
+def build_engine_unit(tag, cx, cy, cz, is_rear, label, order0, axis="x"):
+    """Build one Snake-Swim propulsion pod. Returns (parts, meta).
+    axis="x": spin axis along world X (bike pods, side-mounted).
+    axis="y": spin axis VERTICAL -> the disc lies FLAT/HORIZONTAL (saucer core)."""
     pivot = (cx, cy, cz)
-    tilt = (0.0, math.pi / 2)          # lay the spin axis along world X
+    tilt = (-math.pi / 2, 0.0) if axis == "y" else (0.0, math.pi / 2)
     sign_x = 1.0 if cx >= 0 else -1.0
     r = DIMS["disc_d_mm"] * MM / 2                 # 0.175
     th = DIMS["disc_thick_mm"] * MM                # 0.035
@@ -1070,6 +1071,36 @@ def build_chassis(order0):
                       order, np.array([0.0, 0.45, 0.45]), C_PANEL))
     order += 1
 
+    # ---- exosuit RIDER (forward-lean sport posture) ----------------------
+    rm = []
+
+    def _limb(p0, p1, rw, col, em=False):
+        v, f = _box_between(p0, p1, rw, rw)
+        rm.append(Mesh(v, f, col, group="static", emissive=em))
+
+    hips = (0.0, 0.40, -0.10)
+    sh = (0.0, 0.56, 0.20)                                   # shoulders (leaning fwd)
+    _limb(hips, sh, 0.075, C_HULL_DK)                        # torso
+    v, f = _sphere(0.062, seg=16)                            # helmet / head
+    rm.append(Mesh(_translate(v, (0.0, 0.64, 0.28)), f, C_SEAT, group="static"))
+    for sx in (1, -1):                                       # arms to the bars
+        _limb((sx * 0.10, 0.54, 0.18), (sx * 0.17, 0.44, 0.38), 0.034, C_HULL_DK)
+        _limb((sx * 0.17, 0.44, 0.38), (sx * 0.20, 0.33, 0.56), 0.030, C_HULL_DK)
+    for sx in (1, -1):                                       # legs back to the pegs
+        _limb((sx * 0.10, 0.38, -0.10), (sx * 0.16, 0.24, -0.16), 0.046, C_HULL_DK)
+        _limb((sx * 0.16, 0.24, -0.16), (sx * 0.24, 0.05, -0.28), 0.040, C_HULL_DK)
+    # exosuit cyan power lines (spine + shoulder rig)
+    _limb((0.0, 0.42, -0.06), (0.0, 0.56, 0.18), 0.016, C_ACCENT, em=True)
+    for sx in (1, -1):
+        _limb((sx * 0.09, 0.55, 0.16), (sx * 0.02, 0.50, 0.06), 0.012, C_ACCENT, em=True)
+    parts.append(Part("rider", "Exosuit Rider (Crysis / Shrimp-style)",
+                      rm, ["load-bearing powered exoskeleton",
+                           "forward-lean sport posture on the seat",
+                           "hands on the throttle bars, feet on the pegs",
+                           "cyan power lines = suit actuators"],
+                      order, np.array([0.0, 0.9, 0.0]), C_HULL_DK))
+    order += 1
+
     # ---- front steering vanes / control surfaces -------------------------
     vm = []
     for sx in (0.14, -0.14):
@@ -1218,7 +1249,10 @@ def build_bike(lite=False):
         chassis, order = build_chassis(order)
         parts += chassis
         for (tag, cx, cy, cz, is_rear, label) in ENGINE_LAYOUT:
-            ep, meta, order = build_engine_unit(tag, cx, cy, cz, is_rear, label, order)
+            # discs mounted FLAT/HORIZONTAL (spin axis vertical) -> they face down
+            # and throw the ionised air DOWN for lift, not sideways like wheels.
+            ep, meta, order = build_engine_unit(tag, cx, cy, cz, is_rear, label,
+                                                order, axis="y")
             parts += ep
             engines.append(meta)
         skids, order = build_skids(order)
@@ -1237,75 +1271,111 @@ def build_engine_showcase(detail=3.0):
     saved = VISUAL_DETAIL
     VISUAL_DETAIL = max(saved, detail)
     try:
-        parts, meta, _ = build_engine_unit("show", 0.0, 0.0, 0.0, True, "", 0)
+        # disc FLAT/HORIZONTAL to match the real craft mounting (spin axis vertical)
+        parts, meta, _ = build_engine_unit("show", 0.0, 0.0, 0.0, True, "", 0, axis="y")
     finally:
         VISUAL_DETAIL = saved
     return _merge_parts(parts), [meta]
 
 
-def build_saucer():
-    """A CLOSED saucer (UFO / X-files 'G_Man's IDO' scout) with the Gman's 117
-    engine + gimbaled plasma-clutch plate INSIDE. It looks sealed and
-    propellantless because the thrust vectoring is INTERNAL (the clutch plate
-    pivots) and it breathes ambient air through the rim - no external surfaces,
-    no carried propellant. Section-cut the top dome to see the engine inside."""
+def _scale_unit(parts, s):
+    """Uniformly scale a built unit (all meshes + explode offsets) about its pivot."""
+    for p in parts:
+        p.explode = p.explode * s
+        for m in p.meshes:
+            m.verts = m.verts * s
+    return parts
+
+
+def build_saucer(lite=None):
+    """A completely REDESIGNED closed saucer (X-files 'G_Man's IDO' scout): ONE
+    large central Gman's 117 unit lying FLAT/HORIZONTAL inside a proper UFO hull
+    (wide flat rim, top dome, concave underside), breathing through rim intakes,
+    with the gimbaled plasma-clutch plate directly under the disc. It looks sealed
+    and propellantless because ALL thrust vectoring is INTERNAL (the clutch plate /
+    disc gimbals, not the hull). Section-cut the top dome to see the engine inside."""
     global STRUCT_LITE
     saved = STRUCT_LITE
-    STRUCT_LITE = True
+    STRUCT_LITE = bool(lite) if lite is not None else False
     try:
         parts = []
         engines = []
         order = 0
-        # --- sealed hull (revolved dome + rim), section-cuttable ---
-        R = 1.42
-        prof = [(0.0, -0.20), (0.55, -0.17), (1.05, -0.08), (R, -0.01),
-                (R, 0.03), (1.05, 0.10), (0.62, 0.20), (0.30, 0.28), (0.0, 0.32)]
-        v, f = _revolve(prof, seg=60)
+        R = 2.6                                          # hull rim radius (m)
+        # --- ONE large central Gman's 117 unit, disc FLAT/HORIZONTAL, scaled x3 ---
+        core, meta, order = build_engine_unit("core", 0.0, 0.02, 0.0, False,
+                                              "Central Core", order, axis="y")
+        _scale_unit(core, 3.0)                           # -> disc Ø ~1.05 m, housing ~1.44 m
+        parts += core
+        engines.append(meta)
+        # --- gimbaled plasma-clutch plate directly UNDER the disc (visible) ---
+        cm = []
+        v, f = _solid_cylinder(0.95, -0.03, 0.03, seg=56)          # the big clutch plate
+        v = (np.asarray(v) @ rot_x(0.16).T).tolist()               # illustrative gimbal tilt
+        cm.append(Mesh(_translate(v, (0, -0.62, 0)), f, C_COIL, group="static", emissive=True))
+        v, f = _annulus(1.02, 0.92, -0.05, 0.05, seg=48)           # 2-axis gimbal ring
+        cm.append(Mesh(_translate(v, (0, -0.62, 0)), f, C_HOUSING_DK, group="static"))
+        for ax in (0.0, math.pi / 2):                              # gimbal trunnions
+            v, f = _box_between((-1.06 * math.cos(ax), -0.62, -1.06 * math.sin(ax)),
+                                (1.06 * math.cos(ax), -0.62, 1.06 * math.sin(ax)), 0.05, 0.05)
+            cm.append(Mesh(v, f, C_PANEL, group="static"))
+        parts.append(Part("clutchplate", "Gimbaled Plasma-Clutch Plate (Ø1.9 m)", cm,
+                          ["PIVOTS on a 2-axis gimbal (+/-42 deg)",
+                           "directs the RMF + ionised-air jet DOWN",
+                           "steers the sealed craft WITHOUT tilting the hull",
+                           "the thrust vector can rotate all the way around"],
+                          order, np.array([0.0, -0.9, 0.0]), C_COIL))
+        order += 1
+        # --- compact fusion reactor on the spine, above the disc ---
+        v, f = _sphere(0.16, seg=20)
+        parts.append(Part("reactor2", "Compact Fusion Reactor",
+                          [Mesh(_translate(v, (0, 0.40, 0)), f, C_FUSION,
+                                group="static", emissive=True)],
+                          ["powers the RMF coils + the clutch jet",
+                           "central mast feeds the coil ring"],
+                          order, np.array([0.0, 0.7, 0.0]), C_FUSION))
+        order += 1
+        # --- sealed UFO hull: wide flat rim + top dome + concave underside ---
+        prof = [(0.0, -0.34), (0.7, -0.40), (1.5, -0.34), (2.2, -0.16),
+                (R, -0.03), (R, 0.05), (2.2, 0.20), (1.45, 0.42),
+                (0.75, 0.60), (0.30, 0.70), (0.0, 0.74)]
+        v, f = _revolve(prof, seg=72)
         parts.append(Part("shell", "Sealed Saucer Hull (G_Man's IDO)",
                           [Mesh(v, f, C_HULL, group="static")],
-                          ["closed UFO / X-files scout body",
-                           "engine + clutch fully internal",
+                          ["closed UFO / X-files scout body (Ø5.2 m)",
+                           "single large Gman's 117 core sealed inside",
                            "no external moving control surfaces",
-                           "air-breathing intakes hidden in the rim"],
-                          order, np.array([0.0, 0.9, 0.0]), C_HULL))
+                           "wide flat rim, domed top, concave underside"],
+                          order, np.array([0.0, 1.2, 0.0]), C_HULL))
         order += 1
-        # subtle rim intake band (where it breathes air)
-        v, f = _annulus(R + 0.005, R - 0.05, -0.012, 0.012, seg=60)
-        parts.append(Part("intake", "Rim Air Intakes (breathes ambient air)",
-                          [Mesh(v, f, C_ACCENT, group="static")],
-                          ["ambient air is drawn in here",
-                           "ionised + thrown down by the clutch"],
-                          order, np.array([0.0, 0.0, 0.6]), C_ACCENT))
+        # rim air-intake band (where it breathes ambient air)
+        v, f = _annulus(R + 0.01, R - 0.14, -0.03, 0.03, seg=72)
+        im = [Mesh(v, f, C_ACCENT, group="static")]
+        for i in range(48):                              # intake louvres
+            a = 2 * math.pi * i / 48
+            p0 = ((R - 0.02) * math.cos(a), 0.0, (R - 0.02) * math.sin(a))
+            p1 = ((R - 0.13) * math.cos(a), 0.0, (R - 0.13) * math.sin(a))
+            v, f = _box_between(p0, p1, 0.008, 0.02)
+            im.append(Mesh(v, f, C_HOUSING_DK, group="static"))
+        parts.append(Part("intake", "Rim Air Intakes (breathes ambient air)", im,
+                          ["ambient air is drawn in around the rim",
+                           "ionised + thrown down by the central clutch",
+                           "no medium (vacuum) -> no intake flow -> 0 N"],
+                          order, np.array([0.0, 0.0, 1.1]), C_ACCENT))
         order += 1
-        # four Gman's 117 pods inside, in the compact 2x2 array
-        for (tag, cx, cy, cz, is_rear, label) in ENGINE_LAYOUT:
-            ep, meta, order = build_engine_unit("s_" + tag, cx * 0.62, -0.02,
-                                                cz * 0.62, is_rear, label, order)
-            parts += ep
-            engines.append(meta)
-        # central GIMBALED plasma-clutch plate (shown at an illustrative pivot)
-        cm = []
-        v, f = _solid_cylinder(0.52, -0.014, 0.014, seg=44)
-        v = (np.asarray(v) @ rot_x(0.20).T).tolist()          # illustrative gimbal tilt
-        cm.append(Mesh(_translate(v, (0, -0.06, 0)), f, C_COIL, group="static", emissive=True))
-        v, f = _annulus(0.56, 0.5, -0.02, 0.02, seg=36)       # gimbal ring
-        v = (np.asarray(v) @ rot_x(math.pi / 2).T).tolist()
-        cm.append(Mesh(_translate(v, (0, -0.06, 0)), f, C_HOUSING_DK, group="static"))
-        parts.append(Part("clutchplate", "Gimbaled Plasma-Clutch Plate",
-                          cm,
-                          ["PIVOTS to vector thrust internally",
-                           "directs the RMF + ionised-air jet",
-                           "lets the sealed craft steer without tilting",
-                           "the thrust vector can rotate all the way around"],
-                          order, np.array([0.0, -0.6, 0.0]), C_COIL))
-        order += 1
-        # compact fusion reactor at the core
-        v, f = _sphere(0.09, seg=16)
-        parts.append(Part("reactor2", "Compact Fusion Reactor",
-                          [Mesh(_translate(v, (0, 0.02, 0)), f, C_FUSION,
-                                group="static", emissive=True)],
-                          ["powers the RMF coils + the clutch jet"],
-                          order, np.array([0.0, 0.6, 0.0]), C_FUSION))
+        # three retractable landing legs (classic scout tripod)
+        legm = []
+        for i in range(3):
+            a = 2 * math.pi * i / 3 + math.pi / 6
+            fx, fz = 1.9 * math.cos(a), 1.9 * math.sin(a)
+            legm.append(Mesh(*_box_between((fx * 0.55, -0.34, fz * 0.55),
+                                           (fx, -0.78, fz), 0.05, 0.05),
+                             C_HULL_DK, group="static"))
+            v, f = _solid_cylinder(0.16, -0.02, 0.02, seg=16)
+            legm.append(Mesh(_translate(v, (fx, -0.80, fz)), f, C_PANEL, group="static"))
+        parts.append(Part("skids", "Retractable Landing Legs", legm,
+                          ["three-point scout landing gear"],
+                          order, np.array([0.0, -0.5, 0.0]), C_HULL_DK))
         order += 1
     finally:
         STRUCT_LITE = saved
@@ -1775,6 +1845,19 @@ class Gman117Drive:
 # Interstellar mission profile  (relativistic flip-and-burn math check)
 # ---------------------------------------------------------------------------
 
+# Real interstellar destinations (name, distance in light-years, proper accel in g).
+# Nearer stars use the honest tiny plasma-sail accel; the sim shows the relativistic
+# flip-and-burn trip time for each.
+MISSION_DESTS = [
+    ("Alpha Centauri", 4.367, 0.010),
+    ("Barnard's Star", 5.96, 0.010),
+    ("Wolf 359", 7.86, 0.010),
+    ("Sirius", 8.60, 0.020),
+    ("TRAPPIST-1", 40.7, 0.050),
+    ("Galactic Centre", 26000.0, 1.000),
+]
+
+
 class MissionPlan:
     """Relativistic constant-proper-acceleration flip-and-burn to a destination.
     Accelerate at proper accel `a` to the midpoint, flip, decelerate (retrograde
@@ -1925,7 +2008,9 @@ class BikeRenderer:
         self.engines = engines
         self._home = home
         self.az, self.el, self.dist = self._home
+        self.dist_target = self.dist
         self.pan = np.array([0.0, 0.0])
+        self.free = np.zeros(3)             # free-fly camera world offset
         self.light = C_LIGHT_DIR / np.linalg.norm(C_LIGHT_DIR)
         self.view = "full"          # full | exploded | assembly
         self.section = False
@@ -1938,6 +2023,7 @@ class BikeRenderer:
         self.showcase = showcase    # single-engine component showcase renderer
         self.isolate = None         # solo a single part (index) when not None
         self.zoom_min = zoom_min
+        self.zoom_max = max(14.0, home[2] * 2.5)     # allow pulling back from big models
         # screen-space LOD: min projected face bbox area (px^2) to bother drawing.
         # showcase is one pod so it can afford finer detail than the whole bike;
         # detail reappears on the bike as you zoom in (faces grow past threshold).
@@ -1959,7 +2045,9 @@ class BikeRenderer:
     # ---- camera -----------------------------------------------------------
     def reset_view(self):
         self.az, self.el, self.dist = self._home
+        self.dist_target = self.dist        # smooth (damped) zoom target
         self.pan = np.array([0.0, 0.0])
+        self.free = np.zeros(3)             # free-fly camera world offset
 
     def orbit(self, dx, dy, fine=False):
         s = 0.004 if fine else 0.009
@@ -1969,8 +2057,20 @@ class BikeRenderer:
     def pan_by(self, dx, dy):
         self.pan += np.array([dx, dy])
 
+    def fly(self, right=0.0, up=0.0, dolly=0.0):
+        """Free-fly camera: strafe the focus in the camera's own right/up plane and
+        dolly along the view axis - so you can fly around/into the model (WASD/QE)."""
+        if dolly:
+            self.dist_target = clamp(self.dist_target * (1.0 - 0.05 * clamp(dolly, -1, 1)),
+                                     self.zoom_min, self.zoom_max)
+        if right or up:
+            Rinv = (rot_x(self.el) @ rot_y(self.az)).T          # camera -> world
+            step = 0.03 + 0.03 * self.dist
+            self.free = self.free + Rinv @ np.array([right, up, 0.0]) * step
+
     def zoom(self, factor):
-        self.dist = clamp(self.dist * factor, self.zoom_min, 12.0)
+        # set a TARGET distance; tick() eases toward it for a smooth dolly.
+        self.dist_target = clamp(self.dist_target * factor, self.zoom_min, self.zoom_max)
 
     def set_view(self, mode):
         self.view = mode
@@ -1989,6 +2089,8 @@ class BikeRenderer:
     def tick(self, dt):
         target = 1.0 if self.view == "exploded" else 0.0
         self.explode_amt += (target - self.explode_amt) * min(1.0, dt * 4)
+        # smooth (damped) dolly toward the zoom target
+        self.dist += (self.dist_target - self.dist) * min(1.0, dt * 9.0)
 
     # ---- part placement offset for the current view -----------------------
     def _part_offset(self, part, state):
@@ -2003,7 +2105,7 @@ class BikeRenderer:
             off = part.explode * self.explode_amt
         # retractable skids
         if part.key == "skids":
-            off = off + np.array([0.0, 0.14 * (1.0 - state.skid_deploy), 0.0])
+            off = off + np.array([0.0, 0.30 * (1.0 - state.skid_deploy), 0.0])
         return off
 
     def _global_shift(self, state):
@@ -2048,7 +2150,7 @@ class BikeRenderer:
                 dim = 0.28
             else:
                 dim = 1.0
-            off = self._part_offset(part, state) + gshift
+            off = self._part_offset(part, state) + gshift - self.free
             if part.key.startswith("disc_"):
                 self._disc_offsets[part.key] = off
             highlight = (pi == hi)
@@ -2110,6 +2212,7 @@ class BikeRenderer:
                     pass
 
         # ---- overlays: plasma field, ripple traveling wave, thrust cones ----
+        gshift = gshift - self.free                          # follow the free-fly camera
         self._draw_plasma(surf, cx, cy, focal, Rcam, gshift, state)
         self._draw_ripples(surf, cx, cy, focal, Rcam, gshift, angles, state)
         self._draw_thrust(surf, cx, cy, focal, Rcam, gshift, state)
@@ -2423,9 +2526,9 @@ INFO_PAGES = [
       "",
       "Because nothing external moves and no propellant is carried (it breathes",
       "ambient air/plasma), the drive fits wholly inside a CLOSED hull. Press 6 for",
-      "the SAUCER: a sealed dome + rim over four Gman's 117 pods and the gimbaled",
-      "clutch plate. It looks closed and propellantless - but it is an honest, open,",
-      "air-breathing / plasma thruster, so it works."]),
+      "the SAUCER: a sealed UFO hull (wide flat rim + top dome) over ONE large",
+      "central Gman's 117 disc and the gimbaled clutch plate. It looks closed and",
+      "propellantless - but it is an honest, open, air-breathing thruster, so it works."]),
     ("PERFORMANCE & LIMITS",
      ["Earth 1 g air: FLIES - air-breathing clutch ~3.6 kN vs 2.6 kN weight, hovers",
       "  on reactor power in REAL time (throws ionised air, like an MHD rotor).",
@@ -2726,17 +2829,23 @@ def export_full_obj(out_dir, verbose=False):
                 print(f"wrote {o}\n      {m}  ({n} verts, detail x{VISUAL_DETAIL:.1f})")
             if first is None:
                 first = (o, n)
+        # also export the SAUCER variant (single large disc + sealed UFO hull)
+        s_parts, s_engines = build_saucer(lite=False)
+        for expl in (False, True):
+            o, m, n = export_obj(s_parts, s_engines, out_dir, exploded=expl, name="saucer")
+            if verbose:
+                print(f"wrote {o}\n      {m}  ({n} verts, saucer)")
     finally:
         VISUAL_DETAIL = saved
     return first
 
 
-def export_obj(parts, engines, out_dir, exploded=False):
-    """Write a static OBJ (+MTL) of the whole bike. `exploded` writes the
-    disassembled layout; otherwise the assembled model."""
+def export_obj(parts, engines, out_dir, exploded=False, name="hoverbike"):
+    """Write a static OBJ (+MTL) of a build. `exploded` writes the disassembled
+    layout; otherwise the assembled model. `name` sets the file basename."""
     tag = "exploded" if exploded else "assembled"
-    obj_path = os.path.join(out_dir, f"gmans117_hoverbike_{tag}.obj")
-    mtl_path = os.path.join(out_dir, f"gmans117_hoverbike_{tag}.mtl")
+    obj_path = os.path.join(out_dir, f"gmans117_{name}_{tag}.obj")
+    mtl_path = os.path.join(out_dir, f"gmans117_{name}_{tag}.mtl")
     mtl_name = os.path.basename(mtl_path)
 
     materials = {}   # color -> matname
@@ -2820,7 +2929,7 @@ YAW_RATE = math.radians(70.0)   # deg/s max yaw rate
 SIM_TIME = 28.0                 # sim-seconds per real second (low-thrust time-lapse)
 VSI_CLIMB_LIMIT = 6.0           # m/s reference for the vertical-speed indicator
 GIMBAL_MAX = math.radians(42.0) # how far the plasma-clutch plate can pivot
-BANK_FACTOR = 0.35              # how much the (closed) body visibly leans with the gimbal
+BANK_FACTOR = 0.15              # cosmetic body lean when stationary-body mode is OFF
 GROUND_EFFECT = 0.14           # peak lift boost in ground effect (real rotor effect)
 
 
@@ -2835,6 +2944,7 @@ class FlightDynamics:
     def __init__(self, phys):
         self.phys = phys
         self.hover_hold = False
+        self.stationary_body = True   # body stays LEVEL; engines/clutch gimbal instead
         self.reset()
 
     def reset(self):
@@ -2898,9 +3008,12 @@ class FlightDynamics:
         self.gimbal_pitch += (gp - self.gimbal_pitch) * min(1.0, dt * 4.0)
         self.gimbal_roll += (gr - self.gimbal_roll) * min(1.0, dt * 4.0)
         self.yaw += ctrl["yaw_cmd"] * YAW_RATE * dt
-        # the closed body stays near-LEVEL; it only leans slightly for feel
-        self.pitch += (self.gimbal_pitch * BANK_FACTOR - self.pitch) * min(1.0, dt * 3.0)
-        self.roll += (-self.gimbal_roll * BANK_FACTOR - self.roll) * min(1.0, dt * 3.0)
+        # STATIONARY BODY: by default the closed body stays LEVEL - the clutch plate /
+        # engine pods gimbal for steering, NOT the airframe. A tiny optional lean
+        # (stationary_body off) is only cosmetic feel.
+        bank = 0.0 if self.stationary_body else BANK_FACTOR
+        self.pitch += (self.gimbal_pitch * bank - self.pitch) * min(1.0, dt * 3.0)
+        self.roll += (-self.gimbal_roll * bank - self.roll) * min(1.0, dt * 3.0)
 
         # thrust points along the GIMBALLED plate (internal vectoring), NOT the
         # body tilt -> the craft can hold level and still direct thrust anywhere.
@@ -2988,11 +3101,22 @@ def build_environment():
 # mode these render as a faint ghost wireframe so the working ENGINE internals
 # (spinning discs, RMF coils, transmission spheres, reactor, nozzles) show through.
 _SKIN_KEYS = {"hull", "fairings", "seat", "bars", "vanes", "pegs", "exomount",
-              "arms", "skids", "shell", "intake"}
+              "arms", "skids", "shell", "intake", "rider"}
 
 
 def _is_skin_part(key):
     return key in _SKIN_KEYS or key.startswith("housing_")
+
+
+# Engine/clutch parts that GIMBAL for internal thrust vectoring while the airframe
+# stays level (so you see the engines steer, not the craft tilt).
+_GIMBAL_ENGINE_PREFIX = ("disc_", "lattice_", "ripples_", "ports_", "offset_",
+                         "spheres_", "coil_", "nozzle_", "housing_")
+_GIMBAL_ENGINE_KEYS = {"clutchplate", "reactor2", "intake"}
+
+
+def _is_gimbal_engine(key):
+    return key in _GIMBAL_ENGINE_KEYS or key.startswith(_GIMBAL_ENGINE_PREFIX)
 
 
 class FlightRenderer:
@@ -3055,12 +3179,22 @@ class FlightRenderer:
         draw_items = []
         for m in self.env:                                   # static environment
             draw_items.append((m.world_verts(0.0), m, False))
-        Rb = fd.body_rot()                                   # posed bike
+        Rb = fd.body_rot()                                   # posed bike (near-level)
+        Rg = fd.gimbal_rot()                                  # internal engine gimbal
         gshift = np.array([0.0, math.sin(state.time * 3.0) * 0.01 * state.lift_index(), 0.0])
+        # retract the landing skids/legs in flight (tuck up when off the ground)
+        skid_off = np.array([0.0, 0.30 * (1.0 - state.skid_deploy), 0.0])
         for part in self.parts:
             skin = self.xray and _is_skin_part(part.key)
+            eng = _is_gimbal_engine(part.key)                # engines gimbal; body stays level
+            is_skid = part.key == "skids"
             for m in part.meshes:
-                wv = (m.world_verts(angles.get(m.group, 0.0)) @ Rb.T) + fd.pos + gshift
+                lv = m.world_verts(angles.get(m.group, 0.0))
+                if is_skid:                                  # retract with the craft frame
+                    lv = lv + skid_off
+                if eng:                                      # steer the engine, not the craft
+                    lv = lv @ Rg.T
+                wv = (lv @ Rb.T) + fd.pos + gshift
                 draw_items.append((wv, m, skin))
 
         for wv, m, skin in draw_items:
@@ -3111,6 +3245,7 @@ class FlightRenderer:
         r_c = getattr(state.phys, "r_clutch", 0.0)
         if r_c <= 0.05 or state.throttle < 0.03 or state.phys.regime != "air":
             return
+        r_draw = min(r_c, 8.0)                             # cap the drawn size (framing)
         n = np.asarray(fd.thrust_dir, float)
         n = n / (np.linalg.norm(n) or 1.0)
         ref = np.array([1.0, 0.0, 0.0]) if abs(n[0]) < 0.9 else np.array([0.0, 0.0, 1.0])
@@ -3119,7 +3254,7 @@ class FlightRenderer:
         center = fd.pos + gshift - n * 0.15                # just below the belly
         seg = 72 if INTERACTIVE_ULTRA else 48              # ultra-res coupling rings
         for frac in (0.25, 0.4, 0.55, 0.7, 0.85, 1.0):
-            r = r_c * frac
+            r = r_draw * frac
             pts = []
             for k in range(seg + 1):
                 th = 2.0 * math.pi * k / seg
@@ -3136,13 +3271,14 @@ class FlightRenderer:
         for k in range(8):                                 # radial spokes
             th = 2.0 * math.pi * k / 8
             a = project(center)
-            b = project(center + r_c * (math.cos(th) * u + math.sin(th) * w))
+            b = project(center + r_draw * (math.cos(th) * u + math.sin(th) * w))
             if a is not None and b is not None:
                 pygame.draw.line(surf, (48, 96, 130), (a[0], a[1]), (b[0], b[1]), 1)
-        lab = project(center + r_c * u)
+        lab = project(center + r_draw * u)
         if lab is not None and self._sfont is not None:
+            clip = "  (view capped)" if r_c > r_draw + 1e-6 else ""
             surf.blit(self._sfont.render(
-                f"coupling disc R {r_c:.1f} m (actual area)", True, (90, 180, 220)),
+                f"coupling disc R {r_c:.1f} m (actual area){clip}", True, (90, 180, 220)),
                 (lab[0] + 4, lab[1]))
 
     def _grid_line(self, surf, project, a, b, fd):
@@ -3156,12 +3292,13 @@ class FlightRenderer:
 
     def _ripples(self, surf, project, state, fd, angles, Rb, gshift):
         Rspin = rot_z(angles.get("spin", 0.0))
+        Rg = fd.gimbal_rot()                                  # ripples follow the gimbaled discs
         phase = state.time * (1.5 + 4.0 * state.throttle)
         for eng in self.engines:
             Rtilt = rot_x(eng["tilt"][0]) @ rot_y(eng["tilt"][1])
             base = eng["pivot"]
             for pts, ts in eng["ripples"]:
-                world = ((pts @ Rspin.T) @ Rtilt.T + base) @ Rb.T + fd.pos + gshift
+                world = (((pts @ Rspin.T) @ Rtilt.T + base) @ Rg.T) @ Rb.T + fd.pos + gshift
                 prev = None
                 for k in range(len(world)):
                     pp = project(world[k])
@@ -3173,28 +3310,48 @@ class FlightRenderer:
                     prev = pp
 
     def _thrust(self, surf, project, state, fd, Rb, gshift):
-        """The thrust is INTERNALLY GIMBALLED: draw the expelled air/plasma jet
-        opposite the (pivoting) thrust vector, and the thrust-vector arrow itself,
-        so you can see the clutch plate directing thrust while the body stays level."""
-        if state.throttle < 0.05:
+        """The thrust is INTERNALLY GIMBALLED: draw the expelled air/plasma PLUME
+        opposite the (pivoting) thrust vector as a widening, animated cone (hot core
+        -> cool spray), and the thrust-vector arrow - so you see the clutch plate
+        directing thrust while the body stays level, and the plume tilts with it."""
+        if state.throttle < 0.05 or state.phys.regime == "none":
             return
-        tdir = getattr(fd, "thrust_dir", np.array([0.0, 1.0, 0.0]))
-        c = fd.pos + gshift + np.array([0.0, 0.05, 0.0])
+        tdir = np.asarray(getattr(fd, "thrust_dir", np.array([0.0, 1.0, 0.0])), float)
+        tdir = tdir / (np.linalg.norm(tdir) or 1.0)
+        c = fd.pos + gshift + np.array([0.0, 0.0, 0.0])
         base = project(c)
         if base is None:
             return
-        # 1) expelled jet (thrown air/plasma) - OPPOSITE the thrust vector
-        jlen = 0.55 + 1.9 * state.throttle
-        for s in range(9, 0, -1):
-            t = s / 9.0
-            pp = project(c - tdir * (jlen * t))
-            if pp is None:
-                continue
-            rad = max(1, int(focal_safe(pp[2]) * (0.5 - 0.36 * t) + 1))
-            pygame.draw.circle(surf, _mix((50, 110, 140), C_THRUST, 1.0 - t),
-                               (int(pp[0]), int(pp[1])), rad)
-        # 2) THRUST-VECTOR arrow (where the craft is pushed) - pivots / rotates live
-        tip = project(c + tdir * (0.45 + 0.6 * state.throttle))
+        # basis perpendicular to the jet for the widening cone
+        ref = np.array([1.0, 0.0, 0.0]) if abs(tdir[0]) < 0.9 else np.array([0.0, 0.0, 1.0])
+        u = np.cross(tdir, ref); u /= (np.linalg.norm(u) or 1.0)
+        w = np.cross(tdir, u)
+        thr = state.throttle
+        jlen = 0.6 + 2.6 * thr
+        ph = state.time * (4.0 + 8.0 * thr)                # downward flow animation
+        nst = 16
+        for s in range(nst, 0, -1):
+            t = s / nst                                    # 1 = far, 0 = at the disc
+            hot = 1.0 - t
+            spread = (0.06 + 0.55 * t) * (0.6 + 0.4 * thr) # cone widens away from disc
+            axis_p = c - tdir * (jlen * (t + 0.05 * math.sin(ph - s)))
+            core = project(axis_p)                         # bright core
+            if core is not None:
+                rad = max(1, int(focal_safe(core[2]) * (0.5 - 0.34 * t) + 1))
+                pygame.draw.circle(surf, _mix((70, 150, 190), (215, 255, 245), hot),
+                                   (int(core[0]), int(core[1])), rad)
+            for k in range(6):                             # spray ring at this station
+                ang = 2 * math.pi * k / 6 + 0.5 * s + 0.4 * ph
+                rr = spread * (0.45 + 0.55 * (((s * 7 + k * 5) % 5) / 4.0))
+                p = axis_p + (math.cos(ang) * u + math.sin(ang) * w) * rr
+                pp = project(p)
+                if pp is None:
+                    continue
+                col = _mix((40, 90, 130), C_THRUST, 0.25 + 0.75 * hot)
+                pygame.draw.circle(surf, col, (int(pp[0]), int(pp[1])),
+                                   max(1, int(focal_safe(pp[2]) * 0.22 + 1)))
+        # THRUST-VECTOR arrow (where the craft is pushed) - pivots / rotates live
+        tip = project(c + tdir * (0.5 + 0.7 * thr))
         if tip is not None:
             pygame.draw.line(surf, (150, 255, 210), (base[0], base[1]),
                              (tip[0], tip[1]), 3)
@@ -3303,13 +3460,15 @@ class App:
         # closed saucer (engine inside) - the 'looks closed / propellantless' view
         self.saucer_parts, self.saucer_engines = build_saucer()
         self.srend = BikeRenderer(self.saucer_parts, self.saucer_engines,
-                                  home=(0.9, 0.42, 3.4), zoom_min=0.7)
+                                  home=(0.9, 0.34, 9.0), zoom_min=3.5)
         self.srend.section = True           # start cut so the engine inside is visible
         self.preview = "bike"               # "bike" | "engine" | "saucer" (MODEL mode)
         self.state = BikeState()
         self.env = build_environment()
         self.flight = FlightDynamics(self.state.phys)
         self.frend = FlightRenderer(self.parts, self.engines, self.env)
+        self.frend_saucer = FlightRenderer(self.saucer_parts, self.saucer_engines, self.env)
+        self.flight_craft = "bike"          # which craft is flown: "bike" | "saucer"
         self.mode = "model"                 # "model" | "flight"
         self.adaptive_clutch = True         # variable-geometry clutch resizes per env
         self._env_cfg_cache = {}            # cache the per-env clutch resolution
@@ -3323,7 +3482,8 @@ class App:
         self.pf_particles = []            # flowing medium particles (dynamic flow)
         self.pf_phase = 0.0               # RMF / travelling-wave animation phase
         self.show_mission = False
-        self.mission = MissionPlan()
+        self.mission_dest = 0
+        self.mission = MissionPlan(*MISSION_DESTS[0][1:], name=MISSION_DESTS[0][0])
         self.drag = None
         self.last_mouse = (0, 0)
         self.status = ""
@@ -3351,17 +3511,39 @@ class App:
         return {"engine": self.erend, "saucer": self.srend}.get(self.preview, self.rend)
 
     # ---- mode / preview / overlay helpers (shared by keys + UI buttons) ----
+    def _frend(self):
+        """Active FLIGHT renderer for the currently-flown craft (bike or saucer)."""
+        return self.frend_saucer if self.flight_craft == "saucer" else self.frend
+
+    def _set_flight_craft(self, which):
+        self.flight_craft = which
+        self.flight.reset(); self.state.throttle = 0.0
+        self._reconfigure_clutch()
+        self._flash(("SAUCER flight - maneuvers by INTERNAL gimbal, hull stays level"
+                     if which == "saucer" else "HOVER-BIKE flight"))
+
     def _switch_mode(self, target):
         self.mode = target
         if target == "flight":
             self.rend.selected = None
             if self.state.rpm < 24000:
                 self.state.rpm = 34000
+            # fly whichever craft you were inspecting (bike or saucer)
+            self.flight_craft = "saucer" if self.preview == "saucer" else "bike"
+            self._frend().show_labels = self.rend.show_labels
             self.flight.reset(); self.state.throttle = 0.0
             self._reconfigure_clutch()
-            self._flash("FLIGHT: plasma-driven - [ ] pick an environment; it lifts only where T>W")
+            self._flash(("SAUCER flight - internal gimbal only" if self.flight_craft == "saucer"
+                         else "FLIGHT: plasma-driven - [ ] pick an environment; lifts where T>W"))
         else:
             self._flash("MODEL inspection mode")
+
+    def _cycle_mission(self, step):
+        """Pick a different interstellar destination for the flip-and-burn chart."""
+        self.mission_dest = (self.mission_dest + step) % len(MISSION_DESTS)
+        name, dly, ag = MISSION_DESTS[self.mission_dest]
+        self.mission = MissionPlan(dly, ag, name=name)
+        self._flash(f"Mission target: {name} ({dly:.2f} ly)")
 
     def _change_env(self, step):
         """Cycle the flight environment and (if adaptive) resize the variable-
@@ -3499,15 +3681,20 @@ class App:
                  ("Descend", lambda: setattr(w, "throttle", max(0.0, w.throttle - 0.12)), None)])
             row([("Alt-Hold", lambda: fd.set_hover_hold(not fd.hover_hold), lambda: fd.hover_hold),
                  ("Respawn", lambda: (fd.reset(), setattr(w, "throttle", 0.0)), None)])
-            row([("X-Ray body", lambda: setattr(self.frend, "xray", not self.frend.xray),
-                  lambda: self.frend.xray),
+            row([("X-Ray body", lambda: setattr(self._frend(), "xray", not self._frend().xray),
+                  lambda: self._frend().xray),
                  ("Vector sweep", lambda: setattr(fd, "vector_sweep", not fd.vector_sweep),
                   lambda: getattr(fd, "vector_sweep", False))])
+            row([("Fly BIKE", lambda: self._set_flight_craft("bike"),
+                  lambda: self.flight_craft == "bike"),
+                 ("Fly SAUCER", lambda: self._set_flight_craft("saucer"),
+                  lambda: self.flight_craft == "saucer")])
+        row([("Level body", lambda: setattr(fd, "stationary_body", not fd.stationary_body),
+              lambda: fd.stationary_body),
+             ("Adapt clutch", self._toggle_adaptive, lambda: self.adaptive_clutch)])
         gap(2)
         row([("< Env", lambda: self._change_env(-1), None),
              ("Env >", lambda: self._change_env(+1), None)])
-        if self.mode == "flight":
-            row([("Adapt clutch", self._toggle_adaptive, lambda: self.adaptive_clutch)])
         gap(2)
         row([("Info", lambda: self._only_overlay("info"), lambda: self.show_info),
              ("Math", lambda: self._only_overlay("math"), lambda: self.show_math)])
@@ -3546,9 +3733,10 @@ class App:
         _panel(surf, px, py, pw2, 176, alpha=185)
         surf.blit(self.fsmall.render("ENGINE ORIENTATION", True, C_DIM), (px + 8, py + 6))
         ax, ay, L = px + 60, py + 78, 46
-        axes = [((1, 0, 0), (96, 216, 255), "spin axis (RMF disc)"),
-                ((0, 0, -1), (110, 255, 255), "thrust / field leak"),
-                ((0, 1, 0), (240, 182, 60), "wobble plane")]
+        # disc is horizontal: spin axis VERTICAL, thrust DOWN, wobble plane = disc face
+        axes = [((0, 1, 0), (96, 216, 255), "spin axis (vertical)"),
+                ((0, -1, 0), (110, 255, 255), "thrust / field leak (down)"),
+                ((1, 0, 0), (240, 182, 60), "disc / wobble plane (flat)")]
         for vec, col, _lab in axes:
             v = np.array(vec, dtype=float) @ Rcam.T
             ex, ey = ax + v[0] * L, ay - v[1] * L
@@ -3571,6 +3759,40 @@ class App:
                   "magnetic field -> grips plasma -> thrust")
         surf.blit(self.fsmall.render(chain, True, C_TEXT), (cx + 10, 46))
         surf.blit(self.fsmall.render(chain2, True, C_TEXT), (cx + 10, 64))
+        self._draw_feature_checklist()
+
+    def _draw_feature_checklist(self):
+        """Live confirmation that all SIX core Gman's 117 disc features are present
+        and separately inspectable. Highlights the one you isolate with . / ,."""
+        surf = self.screen
+        R = self.erend
+        feats = [
+            ("Sponge / gyroid lattice (62% solid)", "lattice_"),
+            ("Helical snake-swim ripples (3:1 asym)", "ripples_"),
+            ("Mass offset (18% @ 84% radius)", "offset_"),
+            ("Transmission spheres (counter-rotate)", "spheres_"),
+            ("Recoilless capsule + directional vents", "housing_"),
+            ("RMF electromagnet coils", "coil_"),
+        ]
+        keys = {p.key for p in R.parts}
+        iso = R.isolated_part()
+        iso_key = iso.key if iso else None
+        x, y, w = self.W - 356, int(self.H * 0.40), 332
+        _panel(surf, x, y, w, 30 + 18 * len(feats) + 4, alpha=205)
+        n_ok = sum(any(k.startswith(pref) for k in keys) for _, pref in feats)
+        surf.blit(self.fsmall.render(f"6 CORE DISC FEATURES  ({n_ok}/6 present)",
+                                     True, C_ACCENT), (x + 8, y + 6))
+        for i, (name, pref) in enumerate(feats):
+            present = any(k.startswith(pref) for k in keys)
+            hot = iso_key is not None and iso_key.startswith(pref)
+            yy = y + 26 + i * 18
+            if hot:
+                pygame.draw.rect(surf, (44, 66, 92), (x + 4, yy - 1, w - 8, 17))
+            col = (255, 232, 120) if hot else ((120, 230, 150) if present else C_WARN)
+            mark = "[x]" if present else "[ ]"
+            surf.blit(self.fsmall.render(f"{i+1} {mark} {name}", True, col), (x + 10, yy))
+        surf.blit(self.fsmall.render(". / , isolate each feature to inspect",
+                                     True, C_DIM), (x + 10, y + 26 + 18 * len(feats)))
 
     # ---- events -----------------------------------------------------------
     def handle_events(self, dt):
@@ -3685,6 +3907,8 @@ class App:
             self.info_page = (self.info_page + 1) % len(INFO_PAGES); return True
         if k == pygame.K_LEFTBRACKET and self.show_info:
             self.info_page = (self.info_page - 1) % len(INFO_PAGES); return True
+        if k in (pygame.K_RIGHTBRACKET, pygame.K_LEFTBRACKET) and self.show_mission:
+            self._cycle_mission(1 if k == pygame.K_RIGHTBRACKET else -1); return True
         if k == pygame.K_LEFTBRACKET:
             self._change_env(-1); return True
         if k == pygame.K_RIGHTBRACKET:
@@ -3700,6 +3924,10 @@ class App:
             elif k == pygame.K_3: R.set_view("assembly")
             elif k in (pygame.K_4, pygame.K_x): R.section = not R.section
             elif k == pygame.K_r: R.reset_view()
+            elif k in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                R.zoom(0.85)                       # keyboard zoom IN
+            elif k in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                R.zoom(1.18)                       # keyboard zoom OUT
             elif k == pygame.K_PERIOD:            # isolate next component
                 R.isolate_cycle(+1)
                 self._flash(self._iso_msg(R))
@@ -3733,12 +3961,19 @@ class App:
                 self._flash("Thrust-vector SWEEP " +
                             ("ON (gimbal rotates the vector around)"
                              if self.flight.vector_sweep else "OFF"))
+            elif k == pygame.K_6:                          # switch flown craft bike<->saucer
+                self._set_flight_craft("bike" if self.flight_craft == "saucer" else "saucer")
             elif k == pygame.K_g:                          # transparent-body X-RAY
-                self.frend.xray = not self.frend.xray
+                self._frend().xray = not self._frend().xray
                 self._flash("Body X-RAY " + ("ON - skin ghosted, engine visible"
-                                             if self.frend.xray else "OFF"))
+                                             if self._frend().xray else "OFF"))
             elif k == pygame.K_k:                          # adaptive variable-geom clutch
                 self._toggle_adaptive()
+            elif k == pygame.K_b:                          # stationary/level-body mode
+                self.flight.stationary_body = not self.flight.stationary_body
+                self._flash("Body: " + ("LEVEL (engines gimbal, craft stays level)"
+                                        if self.flight.stationary_body
+                                        else "cosmetic lean ON"))
         return True
 
     def _iso_msg(self, R):
@@ -3781,10 +4016,24 @@ class App:
                       "roll_cmd": roll, "yaw_cmd": yaw}
 
     # ---- per-frame update -------------------------------------------------
+    def _model_free_fly(self, dt):
+        """Continuous free-fly camera in MODEL mode: WASD strafe/dolly, Q/E rise/sink."""
+        R = self._active()
+        keys = pygame.key.get_pressed()
+        sp = dt * 22.0
+        if keys[pygame.K_w]: R.fly(dolly=sp)
+        if keys[pygame.K_s]: R.fly(dolly=-sp)
+        if keys[pygame.K_a]: R.fly(right=-sp)
+        if keys[pygame.K_d]: R.fly(right=sp)
+        if keys[pygame.K_q]: R.fly(up=sp)
+        if keys[pygame.K_e]: R.fly(up=-sp)
+
     def update(self, dt):
         overlay = self.show_info or self.show_help or self.show_math or self.show_mission
         if self.mode == "flight" and not overlay and not self.state.paused:
             self._flight_input(dt)
+        elif self.mode == "model" and not overlay:
+            self._model_free_fly(dt)
         craft_v = self.flight.ground_speed() if self.mode == "flight" else 0.0
         # thin the air with altitude in flight (real service ceiling); nominal else
         self.state.phys.alt_scale = (air_density_scale(self.flight.altitude())
@@ -3823,7 +4072,7 @@ class App:
             if active is not None and not overlay:
                 self.draw_spec_card(active)
         else:
-            self.frend.render(surf, rect, self.state, self.flight, angles, font=self.font)
+            self._frend().render(surf, rect, self.state, self.flight, angles, font=self.font)
             self.draw_flight_hud()
 
         self._draw_panel()
@@ -4159,10 +4408,10 @@ class App:
             "TAB ...... switch MODEL <-> FLIGHT",
             "",
             "-- MODEL (inspection) --",
-            "Mouse drag . orbit    R/M drag . pan    Wheel . zoom",
-            "Shift . fine camera    R . reset camera",
+            "Mouse drag . orbit    R/M drag . pan    Wheel or +/- . smooth zoom",
+            "WASD free-fly (strafe/dolly)   Q/E rise/sink   R . reset camera",
             "5 ...... whole-BIKE <-> single-ENGINE showcase (hi-detail)",
-            "6 ...... closed SAUCER view (engine sealed inside the hull)",
+            "6 ...... SAUCER view (single large disc + sealed UFO hull)",
             ". / , .. isolate next/prev component (solo a part)",
             "1 full   2 exploded   3 assembly   4/X section cutaway",
             "L labels    UP/DOWN disc RPM   SPACE throttle cycle",
@@ -4172,15 +4421,15 @@ class App:
             "-- FLIGHT (plasma-driven; lifts only where T > local weight) --",
             "UP/DOWN .. throttle/grip -> plasma thrust (ascend / descend)",
             "SPACE max grip   C descend   Z altitude-hold   V hover-throttle",
-            "W/S/A/D/Q/E vector the INTERNAL clutch plate (body stays level)",
-            "X vector-sweep   G X-RAY body   K adaptive clutch   R respawn",
+            "W/S/A/D/Q/E vector the INTERNAL clutch (engines gimbal, body LEVEL)",
+            "6 fly BIKE <-> SAUCER   B level/lean   X sweep   G X-RAY   K adaptive",
             "[ / ] change environment: Earth/ionosphere/asteroid/space/ISM",
             "",
             "-- ANY MODE --",
             "[ / ] cycle plasma medium     T RMF field scope",
             "Y ...... live PLASMA-FIELD view (flow, ionise, J x B, thrust)",
-            "J interstellar mission plan   I info/101   M math checks",
-            "P pause   O export OBJ   F2 screenshot",
+            "J interstellar mission ([ / ] change star)   I info   M math",
+            "P pause   O export OBJ (bike + saucer)   F2 screenshot",
             "H this help    ESC quit    (UI scales to the window)",
         ]
         yy = y + 46
@@ -4419,8 +4668,9 @@ class App:
         for i, r in enumerate(rows):
             surf.blit(self.font.render(r, True, C_TEXT), (x + 40, yy + i * 22))
         surf.blit(self.fsmall.render(
-            "Exact relativistic (Rindler) motion - math check in the MATH overlay (M). "
-            "J closes.", True, C_DIM), (x + 20, y + h - 26))
+            f"[ / ] change destination ({self.mission_dest+1}/{len(MISSION_DESTS)})   "
+            "Exact relativistic (Rindler) motion - MATH overlay (M) has the check.   J closes.",
+            True, C_DIM), (x + 20, y + h - 26))
 
     # ---- loop -------------------------------------------------------------
     def run(self):
@@ -4709,15 +4959,37 @@ def selftest():
     horiz = abs(fd.thrust_dir[0]) + abs(fd.thrust_dir[2])
     assert gmag > 25.0, "roll command must swing the clutch gimbal"
     assert horiz > 0.2, "gimbaled thrust must gain a horizontal component"
-    assert bank < gmag, "body must stay LEVELER than the gimbal (internal vectoring)"
+    # STATIONARY BODY (default): the gimbal swings fully while the body stays LEVEL
+    assert fd.stationary_body and bank < 0.5, "stationary body must stay LEVEL (<0.5 deg)"
     assert abs(np.linalg.norm(fd.thrust_dir) - 1.0) < 1e-6, "thrust_dir is a unit aim"
     print(f"[selftest] vectoring  gimbal={gmag:.1f} deg  body lean={bank:.1f} deg"
           f"  thrust_dir=[{fd.thrust_dir[0]:+.2f},{fd.thrust_dir[1]:+.2f},{fd.thrust_dir[2]:+.2f}]")
 
-    # 4) the closed SAUCER hull builds and encloses the four engine pods + gimbal
+    # 4) the redesigned closed SAUCER: ONE large horizontal Gman's 117 core + hull
     s_parts, s_engines = build_saucer()
-    assert len(s_parts) > 0 and len(s_engines) == 4, "saucer must seal 4 pods inside"
-    print(f"[selftest] saucer  {len(s_parts)} parts enclose {len(s_engines)} Gman's 117 pods")
+    s_keys = {p.key for p in s_parts}
+    assert len(s_engines) == 1, "saucer must house ONE large central Gman's 117 core"
+    assert "shell" in s_keys and "clutchplate" in s_keys and "intake" in s_keys, \
+        "saucer needs a sealed hull, gimbaled clutch plate, and rim intakes"
+    assert any(k.startswith("disc_") for k in s_keys), "saucer core must include the disc"
+    # the saucer's disc/clutch parts GIMBAL for internal vectoring; the hull does not
+    assert _is_gimbal_engine("disc_core") and _is_gimbal_engine("clutchplate"), \
+        "saucer core + clutch must gimbal internally"
+    assert not _is_gimbal_engine("shell"), "the saucer HULL must stay level (not gimbal)"
+    # fly the saucer: it must LIFT while its hull stays LEVEL (internal gimbal only)
+    s_st = BikeState(); s_st.rpm = RPM_MAX; s_st.phys.env = 0
+    s_fd = FlightDynamics(s_st.phys)                    # share the SAME drive instance
+    s_fd.reset()
+    for _ in range(int(2.5 * 60)):
+        s_st.throttle = 1.0
+        s_st.update(1 / 60.0, craft_v_ms=s_fd.ground_speed())
+        # modest vectoring while climbing: enough to steer, still lifts
+        s_fd.update(1 / 60.0, {"throttle": 1.0, "pitch_cmd": 0.3, "roll_cmd": 0.3, "yaw_cmd": 0.0})
+    s_lean = math.degrees(math.hypot(s_fd.pitch, s_fd.roll))
+    assert s_fd.altitude() > 0.5, "saucer must LIFT in air (same drive as the bike)"
+    assert s_lean < 0.5, "saucer hull must stay LEVEL - maneuver by internal gimbal only"
+    print(f"[selftest] saucer  {len(s_parts)} parts: sealed UFO hull + 1 large central "
+          f"Gman's 117 core; FLIES (alt {s_fd.altitude():.1f} m, hull lean {s_lean:.1f} deg)")
 
     # 5) live PLASMA-FIELD panel mapping: the flow-particle density scales with the
     #    medium and is ZERO in vacuum (no medium -> no flow -> no thrust, honest).

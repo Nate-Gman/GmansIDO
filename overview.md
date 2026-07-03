@@ -1,7 +1,8 @@
 # Gman's 117 Hover Bike — Technical Reference, Proofs & Verification
 
-**Status:** v5 — real-physics, conservation-proven, feasibility-checked, G-force /
-thermal failure-laddered.
+**Status:** v6 — real-physics + conservation-proven + feasibility-checked + G-force /
+thermal failure-laddered, plus the design-review pass (level-body internal gimbal,
+redesigned & flyable saucer, horizontal discs, exosuit rider, free-fly camera).
 
 `Main.py` is a single-file, standalone Python + pygame + numpy program: a 3-D
 viewer, a first-principles physics sandbox, an engineering test harness, and an
@@ -48,11 +49,12 @@ is measured, not asserted: `--selftest` samples the spiral and confirms 45.0°.
 
 The visual model is built and exported at a **×3 detail pass**:
 
-- Full build: **45 parts, 108 meshes, 43 370 faces**.
-- OBJ export (assembled): **140 228 vertices** (`gmans117_hoverbike_assembled.obj`).
-- Engine showcase (single pod, 100 %): 33 200 faces.
-- Interactive default: a lighter LOD (16 583 faces) for real-time; `--ultra` runs
-  the full non-lite build (~88 k faces).
+- Full build: **46 parts, ~111 meshes, ~43.6 k faces** (incl. the exosuit rider).
+- OBJ export (assembled): **141 524 vertices** (`gmans117_hoverbike_assembled.obj`);
+  the redesigned **saucer** variant exports too (~40 k verts).
+- Engine showcase (single pod, 100 %): 33 200 faces; disc mounted **horizontal**.
+- Interactive default: a lighter LOD (~16.7 k faces) for real-time; `--ultra` runs
+  the full non-lite build (~88 k faces). The four bike discs are **flat/horizontal**.
 
 ---
 
@@ -343,10 +345,11 @@ proves the pure ones to machine precision and the code ones by direct measuremen
 
 ---
 
-## 11. Internal thrust vectoring + the closed saucer
+## 11. Internal thrust vectoring — the body stays LEVEL
 
-The drive **steers from the inside**: the plasma-clutch plate is on a 2-axis gimbal
-(±42°) and pivots to aim the thrust vector while the airframe stays level and sealed.
+The drive **steers from the inside**: the plasma-clutch plate / engine pods are on a
+2-axis gimbal (±42°) that aims the thrust vector while the **airframe holds level and
+closed** — the single strongest design requirement.
 
 ```
 thrust_dir = R_yaw(yaw) · R_gimbal(pitch, roll) · [0,1,0],   |thrust_dir| = 1
@@ -354,16 +357,40 @@ F = T · thrust_dir + gravity + drag
 ```
 
 Because the aim is a **unit vector**, vectoring changes only direction, not
-magnitude — it costs no lift. The body leans only ~35 % of the gimbal angle for
-feel. **Verified:** a full roll command swings the gimbal to **42.0°** while the body
-leans only **14.7°**, and `|thrust_dir| = 1` — proof the thrust rotates internally
-while the body stays leveler than the gimbal.
+magnitude — it costs no lift. By default (`stationary_body` on) the body does **not**
+lean at all; the flight renderer instead applies the gimbal rotation to the *engine
+parts* so you see the pods gimbal while the chassis stays level.
+
+**Verified (`--selftest`):** under full pitch+roll the gimbal swings to **42.0°** while
+the **body lean is 0.0°**, and `|thrust_dir| = 1` — the thrust rotates internally, the
+airframe does not tilt. A `B` toggle enables a small cosmetic lean (≤ 15 % of the
+gimbal angle) if desired.
+
+### The redesigned, flyable saucer
 
 Because nothing external moves and no propellant is carried, the whole drive fits
-inside a **closed saucer hull** (`6` / SAUCER button): a sealed dome + rim over four
-Gman's 117 pods and the gimbaled clutch plate. It *looks* closed and propellantless,
-but it is the same honest open air-breathing / plasma thruster. `--selftest` builds
-the saucer with all 4 pods sealed inside (34 parts).
+inside a **closed saucer hull** (`6`). The saucer is a proper X-Files-style redesign:
+a **single large central Gman's 117 disc** (horizontal) with the gimbaled clutch plate
+directly beneath it, sealed inside a **UFO hull** — wide flat rim, top dome, concave
+underside — with rim air-intakes and a scout tripod (not the old 4-bike-disc layout).
+
+It is **flyable**: press `6` in flight (or the "Fly SAUCER" panel button) and it
+maneuvers by the **internal gimbal only** — the central disc + clutch plate pivot while
+the closed hull stays level. `--selftest` flies it: it lifts on the same drive as the
+bike with the **hull lean at 0.0°**. It also exports as its own OBJ variant.
+
+### The craft & the viewer (design-review fixes)
+
+- **Hover-bike discs are flat/horizontal** (spin axis vertical) — they face down and
+  throw ionized air *down* for lift, not sideways like wheels.
+- An **exosuit rider** (Crysis/Shrimp-style) sits on the seat; **landing skids retract
+  in flight** and redeploy on landing.
+- The **engine showcase** (`5`) shows a live **6-feature checklist** ("6/6 present")
+  that highlights whichever feature you isolate with `.`/`,`.
+- **Camera:** smooth damped zoom (wheel or `+`/`-`), pan, and a **WASD free-fly** with
+  `Q/E` rise/sink to fly around/into the model; `R` resets.
+- The **thrust plume** is a widening, animated cone that tilts with the vectored thrust;
+  the mission planner (`J`) cycles real destinations with `[`/`]`.
 
 ---
 
@@ -373,20 +400,25 @@ the saucer with all 4 pods sealed inside (34 parts).
   the craft climbs. **Verified service ceiling:** thrust `3619 → 3523 → 3328 → 3037 N`
   with altitude → **T/W = 1 at ~10 740 m**. The HUD shows the live air %.
 - **Ground effect:** a near-pad lift boost (fades within one disk radius), HUD marker
-  `+IGE`.
-- **Relativistic interstellar mission:** exact Rindler (constant-proper-acceleration)
-  flip-and-burn. **Verified:** Alpha Centauri 4.367 ly at 0.010 g → peak 20.9 % c,
-  41.4 yr Earth time, 41.1 yr ship time (`t_ship < t_earth`, forward time dilation
-  only).
+  `+IGE`. **Retractable skids** tuck up in flight and redeploy on landing.
+- **Thrust plume:** a widening, animated cone (hot core → cool spray) expelled opposite
+  the thrust vector — it visibly **tilts with the internal gimbal** while the body
+  stays level.
+- **Relativistic interstellar mission (`J`):** exact Rindler (constant-proper-
+  acceleration) flip-and-burn; `[` / `]` cycle real destinations. **Verified:** Alpha
+  Centauri 4.367 ly at 0.010 g → peak 20.9 % c, 41.4 yr Earth, 41.1 yr ship
+  (`t_ship < t_earth`, forward time dilation only). TRAPPIST-1 (40.7 ly) → 87 % c,
+  69 yr Earth / 52 yr ship.
 - **Live visualization:** the **PLASMA-FIELD view** (`Y`) draws a clutch
   cross-section — ambient medium flowing in, the RMF + snake-swim wave ionising and
   J×B-accelerating it, and the reaction thrust arrow (`THRUST = mdot × dv`). Flow
   density scales with the medium (dense air thick, thin plasma sparse, vacuum empty).
   The **X-RAY body** (`G`) ghosts the outer skin to a wireframe so you watch the
   engine work in flight (`--selftest`: 13 skin parts ghosted, 28 engine parts
-  visible). The **coupling disc** overlay draws the drive's *actual* coupling surface
-  area (r_clutch), resizing from ~0.5 m (Venus) to 15 m (10 g) — the model reflects
-  the real design.
+  visible on either craft). The **coupling disc** overlay draws the drive's *actual*
+  coupling surface area (r_clutch), resizing from ~0.5 m (Venus) up (drawn size capped
+  at 8 m for framing; the label shows the true value) — the model reflects the real
+  design.
 
 ---
 
@@ -404,8 +436,10 @@ failing the build if any is wrong:
 7. Over-unity clamp: 10× pattern gain leaves thrust unchanged.
 8. Vacuum → exactly 0 N.
 9. Service ceiling exists (~10.7 km) with monotone thrust-vs-altitude.
-10. Gimbal vectoring: body leans **less** than the gimbal; `|thrust_dir| = 1`.
-11. Saucer builds with 4 pods sealed inside.
+10. Gimbal vectoring: at full command the **body lean is 0.0°** while the gimbal is
+    42°; `|thrust_dir| = 1` (stationary-body mode).
+11. Saucer: **one** large central Gman's 117 core + sealed hull + gimbaled clutch +
+    rim intakes; it **flies** (lifts with the hull lean at 0.0°, internal gimbal only).
 12. Feasibility: disc SF > 2, hover < available power, thrust/power in band,
     radiator < 30 m², imbalance resolved > 10 000×, RPM below burst cap.
 13. Multi-environment: disc + bearing pass all 24 cases; dense → smaller clutch,
@@ -450,20 +484,33 @@ python3 Main.py --export-obj    # regenerate the ×3-detail OBJ/MTL exports
 A fully mouse-operable **CONTROL PANEL** (right side, hide with `U`) mirrors every
 control. Key summary:
 
-- **Any mode:** `TAB` model/flight · `[` `]` environment · `T` RMF scope ·
-  `Y` plasma-field view · `I` info · `M` math checks · `U` panel.
-- **Model:** `1/2/3` full/exploded/assembly · `4` or `X` section · `5` engine
-  showcase · `6` closed saucer · `.` `,` isolate parts · `O` export OBJ.
+- **Any mode:** `TAB` model/flight · `[` `]` environment (or star, in the mission
+  chart) · `T` RMF scope · `Y` plasma-field view · `J` interstellar mission ·
+  `I` info · `M` math checks · `U` panel.
+- **Model:** mouse orbit · wheel or `+`/`-` smooth zoom · **`WASD` free-fly + `Q/E`
+  rise/sink** · `1/2/3` full/exploded/assembly · `4` or `X` section · `5` engine
+  showcase (with the live 6-feature checklist) · `6` saucer · `.` `,` isolate ·
+  `R` reset camera · `O` export OBJ (bike **and** saucer).
 - **Flight:** `UP/DOWN` throttle · `SPACE` max · `C` descend · `Z` altitude-hold ·
-  `V` hover · `W/S/A/D/Q/E` vector the internal clutch plate · `X` vector-sweep ·
-  `G` X-ray body · `K` adaptive variable-geometry clutch · `R` respawn.
+  `V` hover · `W/S/A/D/Q/E` vector the internal clutch plate (**body stays level,
+  engines gimbal**) · `6` fly **BIKE ↔ SAUCER** · `B` toggle level/lean body ·
+  `X` vector-sweep · `G` X-ray body · `K` adaptive clutch · `R` respawn.
+
+The hover-bike now mounts its **four discs flat/horizontal** (lift down, not
+wheel-like), carries an **exosuit rider**, and its **skids retract in flight**. The
+**saucer** (`6` in model, single-large-central-disc build in a sealed UFO hull) is
+now **flyable** — press `6` in flight (or the "Fly SAUCER" button) and it maneuvers
+by the **internal gimbal only** while the closed hull stays level (verified in
+`--selftest`: it lifts with the hull at 0.0° lean).
 
 ---
 
 ## 16. Deliverables
 
-- `gmans117_hoverbike_assembled.obj` / `.mtl` — ×3 detail, ~140 k vertices.
+- `gmans117_hoverbike_assembled.obj` / `.mtl` — ×3 detail, ~141 k vertices.
 - `gmans117_hoverbike_exploded.obj` / `.mtl` — exploded view, ×3 detail.
+- `gmans117_saucer_assembled.obj` / `.mtl` — the redesigned saucer variant.
+- `gmans117_saucer_exploded.obj` / `.mtl` — saucer exploded view.
 
 See the in-app **INFO** (`I`) and **MATH** (`M`) overlays for the same derivations
 on-screen, and `usedpromts.md` / `goal.md` for the original build brief.
